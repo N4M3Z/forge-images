@@ -1,0 +1,7 @@
+name: forge-images
+version: 0.1.0
+description: Image processing utilities — raster-to-vector conversion, format transforms. USE WHEN converting images between formats, tracing bitmaps to SVG, or processing image assets.
+events: []
+metadata:
+  name: [name, title]
+  description: description

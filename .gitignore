@@ -1,0 +1,9 @@
+# Vendor binaries (platform-specific, installed per-machine)
+vendor/
+*.zip
+
+# Build artifacts
+target/
+
+# Local config
+config.yaml
