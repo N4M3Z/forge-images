@@ -52,3 +52,10 @@ rm vendor/realesrgan-ncnn-vulkan-*-macos.zip
 ```
 
 The `vendor/` directory is gitignored — each machine needs its own binary.
+
+## Recommended Security Tools
+
+See [root installation guide](../../INSTALL.md#recommended-security-tools) for full setup. This module benefits from:
+
+- **shellcheck** — `brew install shellcheck` (shell script linting)
+- **[safety-net](https://github.com/kenryu42/claude-code-safety-net)** — destructive command protection
