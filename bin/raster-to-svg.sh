@@ -9,8 +9,8 @@ set -euo pipefail
 # Optional:     realesrgan-ncnn-vulkan (for --ai-upscale)
 
 SCRIPT_NAME="$(basename "$0")"
-SCRIPT_DIR="$(builtin cd "$(dirname "$0")" && pwd)"
-MODULE_ROOT="$(builtin cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(command cd "$(dirname "$0")" && pwd)"
+MODULE_ROOT="$(command cd "$SCRIPT_DIR/.." && pwd)"
 
 usage() {
   cat <<EOF
