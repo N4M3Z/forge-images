@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Generate perceptual hashes (pHash + dHash) for every image in a directory.
+
+Output is a TSV: filename, phash, dhash, width, height, kbytes.
+
+The hash strings are 64-bit hex (16 chars). Compare two hashes with
+Hamming distance — `match-hashes` does this.
+"""
+import argparse
+import sys
+from pathlib import Path
+
+try:
+    import imagehash
+    from PIL import Image
+except ImportError:
+    sys.stderr.write("Missing imagehash + Pillow. Install via:\n  uv pip install imagehash Pillow\n")
+    sys.exit(1)
+
+
+SUPPORTED = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp"}
+
+
+def hash_image(path):
+    try:
+        img = Image.open(path)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        ph = str(imagehash.phash(img, hash_size=8))
+        dh = str(imagehash.dhash(img, hash_size=8))
+        kb = path.stat().st_size // 1024
+        return ph, dh, img.width, img.height, kb
+    except Exception as e:
+        return None
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("directory", type=Path)
+    p.add_argument("--output", type=Path, required=True, help="Output TSV path")
+    p.add_argument("--recursive", action="store_true", help="Recurse into subdirs")
+    args = p.parse_args()
+
+    if not args.directory.is_dir():
+        sys.stderr.write(f"Not a directory: {args.directory}\n")
+        sys.exit(1)
+
+    iterator = args.directory.rglob("*") if args.recursive else args.directory.iterdir()
+    images = sorted(p for p in iterator if p.is_file() and p.suffix.lower() in SUPPORTED)
+    print(f"Found {len(images)} images")
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", encoding="utf-8") as f:
+        f.write("filename\tphash\tdhash\twidth\theight\tkbytes\n")
+        ok = 0
+        fail = 0
+        for i, img_path in enumerate(images, 1):
+            result = hash_image(img_path)
+            if result is None:
+                fail += 1
+                continue
+            ph, dh, w, h, kb = result
+            rel = img_path.relative_to(args.directory)
+            f.write(f"{rel}\t{ph}\t{dh}\t{w}\t{h}\t{kb}\n")
+            ok += 1
+            if i % 50 == 0:
+                print(f"  {i}/{len(images)}...")
+
+    print(f"\n✓ Hashed {ok}, failed {fail}")
+    print(f"  Wrote {args.output}")
+
+
+if __name__ == "__main__":
+    main()

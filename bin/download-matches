@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Download Wikimedia originals for matched captures + emit catalog snippet.
+
+Reads a matches TSV from `match-hashes`, downloads each remote file at
+its full original resolution from Wikimedia Commons (preserving the
+canonical filename), and emits a markdown snippet ready to append to a
+Photographs catalog note.
+
+Each downloaded file lands under --output-dir using the Wikimedia
+filename verbatim — that filename is the canonical reference on Commons
+and makes attribution traceable forever.
+"""
+import argparse
+import sys
+import time
+import urllib.parse
+from pathlib import Path
+
+try:
+    import requests
+except ImportError:
+    sys.stderr.write("Missing requests. Install via:\n  uv pip install requests\n")
+    sys.exit(1)
+
+
+HEADERS = {
+    "User-Agent": "ImageMatcher/0.1 (https://github.com/N4M3Z/forge-images; slide-deck research)",
+    "Accept-Encoding": "gzip",
+}
+
+
+def parse_tsv(path):
+    rows = []
+    with path.open("r", encoding="utf-8") as f:
+        header = f.readline().strip().split("\t")
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) != len(header):
+                continue
+            rows.append(dict(zip(header, parts)))
+    return rows
+
+
+def fetch_imageinfo(filenames):
+    """Resolve original (full-res) URLs for a list of File: titles."""
+    out = {}
+    BATCH = 20
+    titles = [f"File:{n}" for n in filenames]
+    for i in range(0, len(titles), BATCH):
+        batch = titles[i : i + BATCH]
+        params = {
+            "action": "query",
+            "titles": "|".join(batch),
+            "prop": "imageinfo",
+            "iiprop": "url|size|extmetadata",
+            "format": "json",
+        }
+        for attempt in range(5):
+            r = requests.post(
+                "https://commons.wikimedia.org/w/api.php",
+                data=params, headers=HEADERS, timeout=30,
+            )
+            if r.status_code in (429, 503):
+                time.sleep(float(r.headers.get("Retry-After", 2 ** attempt)))
+                continue
+            r.raise_for_status()
+            break
+        data = r.json()
+        for _, page in data.get("query", {}).get("pages", {}).items():
+            title = page.get("title", "").replace("File:", "")
+            info = page.get("imageinfo", [{}])[0]
+            if info:
+                meta = info.get("extmetadata", {})
+                out[title] = {
+                    "url": info.get("url", ""),
+                    "page_url": info.get("descriptionurl", ""),
+                    "width": info.get("width", 0),
+                    "height": info.get("height", 0),
+                    "license": meta.get("LicenseShortName", {}).get("value", "?"),
+                    "artist": meta.get("Artist", {}).get("value", "?"),
+                    "date": meta.get("DateTimeOriginal", {}).get("value", "?"),
+                    "credit": meta.get("Credit", {}).get("value", "?"),
+                }
+        time.sleep(0.5)
+    return out
+
+
+def strip_html(s):
+    """Crude HTML strip for extmetadata fields that come in as HTML."""
+    import re
+    s = re.sub(r"<[^>]+>", "", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip()
+
+
+def download_file(url, dest):
+    if dest.exists():
+        return "skipped"
+    for attempt in range(3):
+        r = requests.get(url, headers=HEADERS, stream=True, timeout=60)
+        if r.status_code in (429, 503):
+            time.sleep(float(r.headers.get("Retry-After", 5)))
+            continue
+        r.raise_for_status()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with dest.open("wb") as f:
+            for chunk in r.iter_content(8192):
+                f.write(chunk)
+        return "ok"
+    return "failed"
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("matches_tsv", type=Path, help="From match-hashes")
+    p.add_argument("--output-dir", type=Path, required=True, help="Where to save downloaded originals")
+    p.add_argument("--catalog-snippet", type=Path, help="Optional markdown snippet output path")
+    p.add_argument("--max-distance", type=int, default=20, help="Skip matches with phash distance > N")
+    p.add_argument("--source-label", default="RTH documentary", help="What to call the discovery source in catalog")
+    args = p.parse_args()
+
+    matches = parse_tsv(args.matches_tsv)
+    matches = [m for m in matches if int(m["phash_distance"]) <= args.max_distance]
+    print(f"Eligible matches at d ≤ {args.max_distance}: {len(matches)}")
+
+    filenames = list({m["remote_filename"] for m in matches})
+    print(f"Resolving full-res info for {len(filenames)} unique remote files...")
+    info = fetch_imageinfo(filenames)
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    catalog_lines = []
+
+    download_count = 0
+    skip_count = 0
+    fail_count = 0
+
+    for m in matches:
+        remote_name = m["remote_filename"]
+        meta = info.get(remote_name)
+        if not meta or not meta.get("url"):
+            fail_count += 1
+            continue
+        dest = args.output_dir / remote_name
+        result = download_file(meta["url"], dest)
+        if result == "ok":
+            download_count += 1
+        elif result == "skipped":
+            skip_count += 1
+        else:
+            fail_count += 1
+            continue
+
+        confidence = "same image" if int(m["phash_distance"]) <= 10 else "relevant"
+        catalog_lines.append(f"## {strip_html(meta.get('artist', '?'))[:80] or '?'} — {Path(remote_name).stem.replace('_', ' ')[:80]}")
+        catalog_lines.append("")
+        catalog_lines.append(f"![[{remote_name}]]")
+        catalog_lines.append("")
+        catalog_lines.append(f"- **Source**: Wikimedia Commons ({args.source_label} match, d={m['phash_distance']}, {confidence})")
+        catalog_lines.append(f"- **URL**: {meta['page_url']}")
+        catalog_lines.append(f"- **Year**: {strip_html(meta.get('date', '?'))[:60] or '?'}")
+        catalog_lines.append(f"- **License**: {strip_html(meta.get('license', '?'))[:60]}")
+        catalog_lines.append(f"- **Discovery capture**: `{m['capture_filename']}` (RTH category: {m.get('category', '?')})")
+        catalog_lines.append(f"- **Local file**: `Assets/Photographs/{remote_name}`")
+        catalog_lines.append("")
+        time.sleep(0.4)
+
+    print(f"\n✓ Downloaded: {download_count}, skipped (existed): {skip_count}, failed: {fail_count}")
+
+    if args.catalog_snippet:
+        args.catalog_snippet.parent.mkdir(parents=True, exist_ok=True)
+        args.catalog_snippet.write_text("\n".join(catalog_lines) + "\n", encoding="utf-8")
+        print(f"  Catalog snippet: {args.catalog_snippet}")
+    else:
+        print()
+        print("Catalog snippet (paste into Photographs catalog.md):")
+        print()
+        print("\n".join(catalog_lines))
+
+
+if __name__ == "__main__":
+    main()
