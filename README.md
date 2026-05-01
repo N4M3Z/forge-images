@@ -8,17 +8,22 @@ Image processing utilities for the Forge framework.
 
 | Skill | Purpose |
 |-------|---------|
-| RasterToVector | Multi-color bitmap-to-SVG conversion via ImageMagick + potrace |
+| RasterToVector    | Multi-color bitmap-to-SVG conversion via ImageMagick + potrace |
+| FramePicker       | Interactive HTML frame picker for video frames + native-resolution still extraction |
+| ClipCutter        | Scene-aware MP4 clip cutting from a picks file (audio included, editor's-cut respected) |
+| CaptureOrganizer  | Auto-label picks from SRT context + organise stills/clips into per-chapter folders |
 
 ## Dependencies
 
-- [ImageMagick](https://imagemagick.org/) (`magick` CLI)
-- [potrace](https://potrace.sourceforge.net/) (bitmap tracer)
+- [ImageMagick](https://imagemagick.org/) (`magick` CLI) — for RasterToVector
+- [potrace](https://potrace.sourceforge.net/) (bitmap tracer) — for RasterToVector
+- [ffmpeg](https://ffmpeg.org/) (with libx264) — for FramePicker
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — optional, for pulling YouTube source videos
 
 Install via Homebrew:
 
 ```bash
-brew install imagemagick potrace
+brew install imagemagick potrace ffmpeg yt-dlp
 ```
 
 ## Usage

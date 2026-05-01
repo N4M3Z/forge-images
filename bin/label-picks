@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Augment a picks file with auto-derived labels from SRT context.
+
+For each pick's pts_seconds, finds the most distinctive content words
+in nearby SRT dialogue and produces a kebab-case slug. Output is the
+picks file with a fourth `label` column appended.
+
+Heuristic: weight rare content words (proper nouns, numbers, capitalised
+mid-sentence words) over common ones. Strips filler/stop words. Limits
+to 4–7 tokens, max 60 characters.
+"""
+import argparse
+import re
+import sys
+from pathlib import Path
+
+STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "at",
+    "for", "by", "with", "as", "is", "are", "was", "were", "be", "been",
+    "being", "have", "has", "had", "do", "does", "did", "will", "would",
+    "should", "could", "may", "might", "can", "this", "that", "these",
+    "those", "it", "its", "their", "they", "them", "he", "she", "his",
+    "her", "him", "we", "us", "our", "you", "your", "i", "me", "my",
+    "from", "into", "out", "up", "down", "over", "under", "than", "then",
+    "if", "so", "such", "no", "not", "any", "all", "some", "more", "most",
+    "many", "much", "few", "very", "just", "only", "also", "too", "even",
+    "now", "still", "yet", "already", "always", "never", "ever", "again",
+    "well", "back", "here", "there", "where", "when", "what", "who",
+    "how", "why", "which", "while", "would", "since", "until", "upon",
+    "during", "after", "before", "between", "through", "within", "without",
+    "about", "against", "among", "across", "behind", "beyond", "near",
+    "off", "ago", "let", "got", "get", "go", "going", "went", "gone",
+    "come", "came", "see", "saw", "seen", "look", "looked", "make", "made",
+    "take", "took", "give", "gave", "say", "said", "tell", "told", "know",
+    "knew", "think", "thought", "find", "found", "feel", "felt", "want",
+    "use", "used", "work", "worked", "way", "time", "year", "years", "day",
+    "days", "people", "thing", "things", "world", "way", "ways", "right",
+    "left", "long", "short", "good", "bad", "great", "big", "small",
+    "many", "first", "second", "third", "last", "next", "old", "new",
+    "high", "low", "early", "late", "much", "more", "less", "least",
+    "however", "therefore", "thus", "indeed", "rather", "quite", "almost",
+    "instead", "actually", "perhaps", "maybe", "obviously", "clearly",
+    "really", "certainly", "soon", "later", "sometimes", "often", "usually",
+    "every", "each", "both", "either", "neither", "other", "another",
+    "having", "saying", "doing", "going", "coming", "looking", "trying",
+    "must", "shall", "ought", "lot", "lots", "kind", "sort", "type",
+    "told", "asked", "called", "named", "known", "wrote", "spoke",
+    "later", "soon", "early", "late", "morning", "evening",
+}
+
+
+def parse_srt(srt_path):
+    text = srt_path.read_text(encoding="utf-8")
+    pattern = re.compile(
+        r"(\d+)\n"
+        r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})\n"
+        r"(.*?)(?=\n\n|\n*$)",
+        re.DOTALL,
+    )
+    entries = []
+    for match in pattern.finditer(text):
+        start = (
+            int(match.group(2)) * 3600
+            + int(match.group(3)) * 60
+            + int(match.group(4))
+            + int(match.group(5)) / 1000
+        )
+        end = (
+            int(match.group(6)) * 3600
+            + int(match.group(7)) * 60
+            + int(match.group(8))
+            + int(match.group(9)) / 1000
+        )
+        body = match.group(10).strip().replace("\n", " ")
+        entries.append((start, end, body))
+    return entries
+
+
+def gather_context(pts, srt_entries, window=8.0):
+    nearby = []
+    for start, end, text in srt_entries:
+        if start - window <= pts <= end + window:
+            nearby.append(text)
+    return " ".join(nearby)
+
+
+def extract_keywords(context, max_tokens=6):
+    """Pick up to max_tokens distinctive tokens from context.
+
+    Strategy: prefer capitalised mid-sentence words (proper nouns) and
+    numeric tokens (years, casualty counts). Fall back to longer-than-average
+    content words after stop-word removal. Preserve order to keep meaning.
+    """
+    if not context:
+        return []
+
+    # Tokenise on whitespace + punctuation, keep numbers attached to digits
+    tokens = re.findall(r"[A-Za-zÀ-ž'-]+|\d{2,}", context)
+
+    # Score each token
+    scored = []
+    seen = set()
+    for tok in tokens:
+        low = tok.lower()
+        if low in STOPWORDS or len(tok) < 3:
+            continue
+        if low in seen:
+            continue
+
+        score = 0
+        # Numbers (years, casualty figures): high signal
+        if tok.isdigit():
+            score += 3
+        # Proper-noun-ish (capitalised, not sentence-start)
+        elif tok[0].isupper() and len(tok) > 3:
+            score += 2
+        # Long content word
+        elif len(tok) >= 6:
+            score += 1
+
+        if score > 0:
+            scored.append((score, tok, low))
+            seen.add(low)
+
+    # Sort by score desc, but try to keep some textual order
+    scored.sort(key=lambda x: -x[0])
+    selected = scored[:max_tokens]
+    # Resort by appearance order in original text for readability
+    order = {tok.lower(): i for i, tok in enumerate(tokens)}
+    selected.sort(key=lambda x: order.get(x[2], 99999))
+    return [t[1] for t in selected]
+
+
+def slugify(words, max_len=60):
+    """Convert a list of words to kebab-case slug."""
+    if not words:
+        return "no-context"
+    s = "-".join(w.lower() for w in words)
+    s = re.sub(r"[^a-z0-9-]", "", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    if len(s) > max_len:
+        # Trim at word boundary
+        s = s[:max_len].rsplit("-", 1)[0]
+    return s or "no-context"
+
+
+def parse_picks(text):
+    picks = []
+    for line in text.strip().splitlines():
+        parts = line.split("\t") if "\t" in line else line.split()
+        if len(parts) < 3 or parts[0] == "frame":
+            continue
+        try:
+            picks.append((parts[0], parts[1], float(parts[2])))
+        except (ValueError, IndexError):
+            pass
+    return picks
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("picks_file", type=Path)
+    p.add_argument("srt_file", type=Path)
+    p.add_argument("--output", type=Path, help="Output path (default: <picks>.labelled.tsv)")
+    p.add_argument("--window", type=float, default=8.0, help="SRT lookup window in seconds")
+    p.add_argument("--max-tokens", type=int, default=6, help="Max words per label")
+    args = p.parse_args()
+
+    output = args.output or args.picks_file.with_suffix(".labelled.tsv")
+
+    print(f"Parsing SRT {args.srt_file.name}...")
+    srt_entries = parse_srt(args.srt_file)
+    print(f"  {len(srt_entries)} entries")
+
+    picks = parse_picks(args.picks_file.read_text())
+    print(f"Labelling {len(picks)} picks...")
+
+    lines = ["frame\ttimestamp\tpts_seconds\tlabel"]
+    for frame, ts, pts in picks:
+        ctx = gather_context(pts, srt_entries, args.window)
+        keywords = extract_keywords(ctx, args.max_tokens)
+        label = slugify(keywords)
+        lines.append(f"{frame}\t{ts}\t{pts}\t{label}")
+
+    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"\n✓ Wrote {output}")
+    print(f"  Sample labels:")
+    for line in lines[1:11]:
+        parts = line.split("\t")
+        print(f"    {parts[1]}  →  {parts[3]}")
+
+
+if __name__ == "__main__":
+    main()
