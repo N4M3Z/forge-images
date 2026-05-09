@@ -1,6 +1,7 @@
 ---
 name: CatalogEmbeds
-description: Insert inline `![[file|600]]` image previews under every `## Title` entry in a Markdown catalog that follows the `**Local file**: \`Assets/<dir>/<filename>\`` convention. Idempotent and self-healing — wrong embeds (where Local file is "not downloaded" or missing) are removed automatically. USE WHEN turning a text-only asset catalog into a visually-scannable mood-board for slide construction.
+description: 'Insert inline `![[file|600]]` image previews under every `## Title` entry in a Markdown catalog that follows the `**Local file**: \`Assets/<dir>/<filename>\`` convention. Idempotent and self-healing — wrong embeds (where Local file is "not downloaded" or missing) are removed automatically. USE WHEN turning a text-only asset catalog into a visually-scannable mood-board for slide construction.'
+version: 0.1.0
 ---
 
 # CatalogEmbeds

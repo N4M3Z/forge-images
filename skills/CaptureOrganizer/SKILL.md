@@ -1,6 +1,7 @@
 ---
 name: CaptureOrganizer
 description: Post-process FramePicker / ClipCutter outputs. Auto-derive content labels from SRT context (writes a 4th label column to picks.tsv) and move stills/clips into per-chapter section folders based on a sections.tsv. USE WHEN naming captures by topic or sorting hundreds of files into editor-friendly directory structure (Boer War / Russo-Japanese / etc.).
+version: 0.1.0
 ---
 
 # CaptureOrganizer

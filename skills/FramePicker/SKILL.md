@@ -1,6 +1,7 @@
 ---
 name: FramePicker
 description: Interactive HTML frame picker for documentary videos + native-resolution still extraction. ffmpeg scene-change detection finds every visual cut, the picker page lays out 4×N thumbnails with SRT context, you select by checkbox and clipboard-export to a picks.tsv. USE WHEN harvesting period photographs / archive stills / map frames from YouTube documentaries or talking-head videos for slide-deck imagery.
+version: 0.1.0
 ---
 
 # FramePicker

@@ -1,6 +1,7 @@
 ---
 name: ImageMatcher
 description: Algorithmic reverse image lookup against Wikimedia Commons (or any image source). Perceptual-hash a local image set, harvest candidates from Wikimedia categories, match by Hamming distance, download the originals with their canonical filenames + emit a Markdown catalog snippet with full attribution. USE WHEN you have a local pile of images (documentary frame captures, web screenshots, scanned material) and need to find the original sourced version on Wikimedia Commons without sending the images to any LLM or paid API.
+version: 0.1.0
 ---
 
 # ImageMatcher

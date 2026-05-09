@@ -1,6 +1,7 @@
 ---
 name: ClipCutter
 description: Scene-aware MP4 clip cutting from a picks file. ffmpeg scene-change detection identifies the editor's actual cuts; each pick's clip runs from the previous scene boundary to the next. Audio included. USE WHEN you need short MP4 clips around picked timestamps that respect documentary editor cuts (no mid-sentence audio bleeds, no abrupt camera-pan splices).
+version: 0.1.0
 ---
 
 # ClipCutter
