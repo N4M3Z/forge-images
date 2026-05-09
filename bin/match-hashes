@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Match a captures hash database against a remote hash database.
+
+Reads two TSVs produced by `phash-images` (local) and `wikimedia-fetch`
+(remote). For each capture, finds the closest remote match by Hamming
+distance on the perceptual hash. Optionally tightens the match by
+checking dHash distance as a secondary signal.
+
+Output TSV columns:
+    capture_filename  phash_distance  dhash_distance  remote_filename  category  page_url  thumb_url
+"""
+import argparse
+import sys
+from pathlib import Path
+
+
+def hamming(a, b):
+    """Hamming distance between two hex hash strings."""
+    return bin(int(a, 16) ^ int(b, 16)).count("1")
+
+
+def parse_tsv(path):
+    rows = []
+    with path.open("r", encoding="utf-8") as f:
+        header = f.readline().strip().split("\t")
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) != len(header):
+                continue
+            rows.append(dict(zip(header, parts)))
+    return rows
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("captures_tsv", type=Path, help="From phash-images")
+    p.add_argument("remote_tsv", type=Path, help="From wikimedia-fetch")
+    p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--max-distance", type=int, default=14, help="Reject matches with phash Hamming > N")
+    p.add_argument("--top-k", type=int, default=1, help="Keep top K matches per capture (1 = best only)")
+    args = p.parse_args()
+
+    captures = parse_tsv(args.captures_tsv)
+    remote = parse_tsv(args.remote_tsv)
+    print(f"Captures: {len(captures)} | Remote: {len(remote)}")
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", encoding="utf-8") as f:
+        f.write("capture_filename\tphash_distance\tdhash_distance\tremote_filename\tcategory\tpage_url\tthumb_url\n")
+        match_count = 0
+        for cap in captures:
+            cap_ph = cap["phash"]
+            cap_dh = cap["dhash"]
+            scored = []
+            for r in remote:
+                d_ph = hamming(cap_ph, r["phash"])
+                if d_ph > args.max_distance:
+                    continue
+                d_dh = hamming(cap_dh, r["dhash"])
+                # Combined score weighted toward phash
+                score = d_ph * 2 + d_dh
+                scored.append((score, d_ph, d_dh, r))
+            if not scored:
+                continue
+            scored.sort(key=lambda x: x[0])
+            for score, d_ph, d_dh, r in scored[: args.top_k]:
+                f.write(f"{cap['filename']}\t{d_ph}\t{d_dh}\t{r['filename']}\t{r['category']}\t{r['page_url']}\t{r['thumb_url']}\n")
+                match_count += 1
+
+    print(f"\n✓ {match_count} matches at threshold ≤ {args.max_distance}")
+    print(f"  Wrote {args.output}")
+
+
+if __name__ == "__main__":
+    main()

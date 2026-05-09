@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Build an interactive HTML frame-picker page from a video + SRT.
+
+Pipeline:
+1. ffmpeg scene-change detection extracts one frame per visual cut
+2. Parse showinfo output for pts_time → maps frame to seconds
+3. Match each frame timestamp to nearest SRT context
+4. Render HTML with thumbnails + context + checkboxes + clipboard export
+
+User browses the HTML page locally, picks frames by checkbox, exports the
+selection list to clipboard, and pastes it back to drive `extract-frames`
+or `cut-clips`.
+"""
+import argparse
+import re
+import subprocess
+import sys
+from html import escape
+from pathlib import Path
+
+
+def parse_srt(srt_path):
+    text = srt_path.read_text(encoding="utf-8")
+    pattern = re.compile(
+        r"(\d+)\n"
+        r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})\n"
+        r"(.*?)(?=\n\n|\n*$)",
+        re.DOTALL,
+    )
+    entries = []
+    for match in pattern.finditer(text):
+        start = (
+            int(match.group(2)) * 3600
+            + int(match.group(3)) * 60
+            + int(match.group(4))
+            + int(match.group(5)) / 1000
+        )
+        end = (
+            int(match.group(6)) * 3600
+            + int(match.group(7)) * 60
+            + int(match.group(8))
+            + int(match.group(9)) / 1000
+        )
+        body = match.group(10).strip().replace("\n", " ")
+        entries.append((start, end, body))
+    return entries
+
+
+def find_context(timestamp, srt_entries, window=8.0):
+    nearby = []
+    for start, end, text in srt_entries:
+        if start - window <= timestamp <= end + window:
+            nearby.append(text)
+    return " ".join(nearby)
+
+
+def extract_frames(video, out_dir, scene_threshold=0.4):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "info",
+        "-i", str(video),
+        "-vf", f"select=gt(scene\\,{scene_threshold}),scale=480:-2,showinfo",
+        "-fps_mode", "vfr",
+        "-q:v", "4",
+        str(out_dir / "%04d.jpg"),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    frames = []
+    pts_re = re.compile(r"pts_time:(\d+\.?\d*)")
+    n_re = re.compile(r"\bn:\s*(\d+)")
+    for line in result.stderr.splitlines():
+        if "Parsed_showinfo" in line:
+            ts_m = pts_re.search(line)
+            n_m = n_re.search(line)
+            if ts_m and n_m:
+                frame_num = int(n_m.group(1)) + 1
+                pts = float(ts_m.group(1))
+                frames.append((frame_num, pts))
+    return frames
+
+
+def secs_to_hms(s):
+    h = int(s // 3600)
+    m = int((s % 3600) // 60)
+    sec = int(s % 60)
+    return f"{h:02d}:{m:02d}:{sec:02d}"
+
+
+def render_html(title, frames, srt_entries, output):
+    cards = []
+    for frame_num, pts in frames:
+        ts = secs_to_hms(pts)
+        ctx = find_context(pts, srt_entries)
+        rel_path = f"frames/{frame_num:04d}.jpg"
+        cards.append(
+            f"""<div class="card" data-ctx="{escape(ctx.lower())}" data-ts="{ts}">
+<label>
+<input type="checkbox" data-frame="{frame_num:04d}" data-ts="{ts}" data-pts="{pts:.2f}">
+<img src="{rel_path}" loading="lazy" alt="{ts}">
+<div class="ts">{ts} · #{frame_num:04d}</div>
+<div class="ctx">{escape(ctx)}</div>
+</label>
+</div>"""
+        )
+
+    html = (
+        """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<title>"""
+        + escape(title)
+        + """</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 0 20px 80px; background: #f5f5f5; }
+  header { position: sticky; top: 0; background: #f5f5f5; padding: 14px 0 10px; border-bottom: 1px solid #ccc; z-index: 100; }
+  header h1 { margin: 0 0 8px; font-size: 18px; }
+  #search { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; padding-top: 14px; }
+  .card { background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 6px; transition: outline 0.1s; }
+  .card label { display: block; cursor: pointer; }
+  .card img { width: 100%; height: auto; border-radius: 4px; display: block; }
+  .card input[type=checkbox] { margin: 4px 4px 0 0; vertical-align: middle; transform: scale(1.3); }
+  .card.selected { outline: 4px solid #c90; }
+  .ts { font-weight: 600; font-size: 13px; margin-top: 6px; color: #333; display: inline-block; vertical-align: middle; }
+  .ctx { font-size: 12px; color: #555; line-height: 1.4; max-height: 95px; overflow: auto; padding: 4px 0 0; }
+  footer { position: fixed; bottom: 0; left: 0; right: 0; background: #222; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 -1px 6px rgba(0,0,0,0.2); }
+  footer button { background: #c90; color: white; border: 0; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600; }
+  footer button:hover { background: #d80; }
+  .stats { font-size: 14px; }
+  .toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); background: #2a7; color: white; padding: 10px 20px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .toast.visible { opacity: 1; }
+</style>
+</head><body>
+<header>
+<h1>"""
+        + escape(title)
+        + """ · <span id="total"></span> frames</h1>
+<input id="search" placeholder="Filter: SRT text, timestamp prefix (00:25), or word...">
+</header>
+<div class="grid">
+"""
+        + "\n".join(cards)
+        + """
+</div>
+<footer>
+<span class="stats"><span id="count">0</span> selected of <span id="total2">0</span></span>
+<button onclick="exportPicks()">Copy picks to clipboard</button>
+</footer>
+<div class="toast" id="toast"></div>
+<script>
+const cbs = () => document.querySelectorAll('input[type=checkbox]');
+const total = cbs().length;
+document.getElementById('total').textContent = total;
+document.getElementById('total2').textContent = total;
+
+function update() {
+  const sel = [...cbs()].filter(c => c.checked);
+  document.getElementById('count').textContent = sel.length;
+  cbs().forEach(c => c.closest('.card').classList.toggle('selected', c.checked));
+}
+cbs().forEach(c => c.addEventListener('change', update));
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('visible');
+  setTimeout(() => t.classList.remove('visible'), 2200);
+}
+
+function exportPicks() {
+  const sel = [...cbs()].filter(c => c.checked);
+  if (!sel.length) { showToast('Nothing selected'); return; }
+  const lines = sel.map(c => `${c.dataset.frame}\\t${c.dataset.ts}\\t${c.dataset.pts}`);
+  const text = `frame\\ttimestamp\\tpts_seconds\\n${lines.join('\\n')}`;
+  navigator.clipboard.writeText(text).then(
+    () => showToast(`✓ Copied ${sel.length} picks. Paste them back to the agent.`),
+    () => { prompt('Copy this:', text); }
+  );
+}
+
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('.card').forEach(card => {
+    const match = !q || card.dataset.ctx.includes(q) || card.dataset.ts.includes(q);
+    card.style.display = match ? '' : 'none';
+  });
+});
+</script>
+</body></html>"""
+    )
+    output.write_text(html, encoding="utf-8")
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("video", type=Path, help="Source video file")
+    p.add_argument("srt", type=Path, help="Subtitle file matching the video")
+    p.add_argument("--output-dir", type=Path, required=True, help="Where to write frames/ and index.html")
+    p.add_argument("--threshold", type=float, default=0.4, help="Scene-change detection threshold (0.0-1.0)")
+    args = p.parse_args()
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    frame_dir = args.output_dir / "frames"
+
+    print(f"Extracting scene-change frames from {args.video.name} (threshold={args.threshold})...")
+    frames = extract_frames(args.video, frame_dir, args.threshold)
+    print(f"  Extracted {len(frames)} frames")
+
+    print(f"Parsing SRT {args.srt.name}...")
+    srt_entries = parse_srt(args.srt)
+    print(f"  Parsed {len(srt_entries)} SRT entries")
+
+    title = args.video.stem
+    output_html = args.output_dir / "index.html"
+    render_html(title, frames, srt_entries, output_html)
+    print(f"\n✓ Open: file://{output_html.absolute()}")
+
+
+if __name__ == "__main__":
+    main()

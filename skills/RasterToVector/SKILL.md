@@ -1,6 +1,7 @@
 ---
 name: RasterToVector
 description: Multi-color bitmap-to-SVG conversion via ImageMagick + potrace, with optional AI upscaling. USE WHEN converting raster images (GIF, PNG, JPEG) to scalable vector SVG format.
+version: 0.1.0
 ---
 
 # RasterToVector

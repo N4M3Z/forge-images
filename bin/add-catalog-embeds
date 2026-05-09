@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Add inline ![[file|600]] embeds under every entry in a catalog (bounded).
+
+Each ## entry runs from its heading until the next `##` heading or end of
+file. Within that bounded block, we look for `**Local file**: ` and decide:
+
+- If the field is `Assets/<dir>/<filename>` → insert (or fix) embed
+- If the field is missing or "not downloaded" → remove any wrong embed
+  the previous loose pass might have inserted
+
+Idempotent and self-healing.
+"""
+import re
+import sys
+from pathlib import Path
+
+LOCAL_FILE_PATH_RE = re.compile(r"\*\*Local file\*\*\s*:\s*`Assets/[^/]+/([^`]+)`")
+LOCAL_FILE_ANY_RE = re.compile(r"\*\*Local file\*\*\s*:\s*(.+)")
+EMBED_LINE_RE = re.compile(r"^!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
+
+
+def split_into_entries(lines):
+    """Yield (entry_start_index, entry_lines) for each `## ` block."""
+    entry_starts = [i for i, l in enumerate(lines) if l.startswith("## ")]
+    for k, start in enumerate(entry_starts):
+        end = entry_starts[k + 1] if k + 1 < len(entry_starts) else len(lines)
+        yield start, end
+
+
+def process(text):
+    lines = text.split("\n")
+    out = list(lines)  # we'll edit in place
+    inserted = 0
+    removed = 0
+    fixed = 0
+
+    # Process from bottom up so insertions/deletions don't shift earlier indices
+    entries = list(split_into_entries(out))
+    for start, end in reversed(entries):
+        block = out[start:end]
+        # Find canonical filename (from Local file path)
+        filename = None
+        local_file_text = None
+        for bl in block[1:]:
+            m_path = LOCAL_FILE_PATH_RE.search(bl)
+            if m_path:
+                filename = m_path.group(1).strip()
+                break
+            m_any = LOCAL_FILE_ANY_RE.search(bl)
+            if m_any and local_file_text is None:
+                local_file_text = m_any.group(1).strip()
+
+        # Find existing embed (in first 6 lines after heading)
+        embed_idx = None
+        embed_filename = None
+        for offset in range(1, min(7, len(block))):
+            m = EMBED_LINE_RE.match(block[offset].strip())
+            if m:
+                embed_idx = start + offset
+                embed_filename = m.group(1).strip()
+                break
+
+        if filename:
+            expected_embed = f"![[{filename}|600]]"
+            if embed_idx is None:
+                # Insert: blank + embed line right after heading
+                if start + 1 < len(out) and out[start + 1].strip() == "":
+                    out.insert(start + 2, expected_embed)
+                    out.insert(start + 3, "")
+                else:
+                    out.insert(start + 1, "")
+                    out.insert(start + 2, expected_embed)
+                    out.insert(start + 3, "")
+                inserted += 1
+            elif out[embed_idx].strip() != expected_embed:
+                # Wrong filename or missing width spec — replace
+                out[embed_idx] = expected_embed
+                fixed += 1
+            # else: correct, skip
+        else:
+            # No canonical filename. If there's an embed, it's wrong — remove it.
+            if embed_idx is not None:
+                # Remove embed line + the trailing blank if present
+                if embed_idx + 1 < len(out) and out[embed_idx + 1].strip() == "":
+                    del out[embed_idx : embed_idx + 2]
+                else:
+                    del out[embed_idx]
+                removed += 1
+
+    return "\n".join(out), inserted, fixed, removed
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: add_catalog_embeds.py <catalog.md> [<catalog2.md> ...]", file=sys.stderr)
+        sys.exit(1)
+    for path_str in sys.argv[1:]:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"  ✗ missing: {path}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        new_text, inserted, fixed, removed = process(text)
+        if inserted == 0 and fixed == 0 and removed == 0:
+            print(f"  · {path.name}: no changes needed")
+            continue
+        path.write_text(new_text, encoding="utf-8")
+        print(f"  ✓ {path.name}: inserted {inserted}, fixed {fixed}, removed {removed}")
+
+
+if __name__ == "__main__":
+    main()

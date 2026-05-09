@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Move FramePicker outputs into per-section folders based on a sections file.
+
+Sections file format (tab-separated, header optional):
+
+    start       end         slug
+    00:00:00    00:03:00    intro
+    00:03:00    00:30:00    boer-war
+
+Each output file (`<prefix>-HHhMMmSSs.<ext>` or `<prefix>-HHhMMmSSs-<label>.<ext>`)
+has its embedded timestamp parsed; the file is moved into the matching section
+subfolder, prefixed with a 2-digit ordinal so sections sort chronologically.
+
+The sections themselves are checked greedily in file order, so list them in
+chronological order in the sections file.
+"""
+import argparse
+import re
+import shutil
+import sys
+from pathlib import Path
+
+TS_PATTERN = re.compile(r"-(\d{2})h(\d{2})m(\d{2})s")
+HMS_PATTERN = re.compile(r"^(\d{1,2}):(\d{2}):(\d{2})$")
+
+
+def parse_hms(text):
+    m = HMS_PATTERN.match(text.strip())
+    if not m:
+        raise ValueError(f"Bad timestamp: {text}")
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+
+
+def parse_sections(text):
+    sections = []
+    for line in text.strip().splitlines():
+        parts = re.split(r"\s+", line.strip(), maxsplit=2)
+        if len(parts) < 3 or parts[0] in ("start", "#") or parts[0].startswith("#"):
+            continue
+        try:
+            start = parse_hms(parts[0])
+            end = parse_hms(parts[1])
+            slug = parts[2].strip()
+            sections.append((start, end, slug))
+        except ValueError:
+            pass
+    return sections
+
+
+def file_seconds(filename):
+    m = TS_PATTERN.search(filename)
+    if not m:
+        return None
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("source_dir", type=Path, help="Directory of capture files to organise")
+    p.add_argument("sections_file", type=Path, help="TSV: start  end  slug")
+    p.add_argument("--output-dir", type=Path, required=True, help="Destination root")
+    p.add_argument("--prefix-filter", help="Only move files whose name starts with this")
+    p.add_argument("--copy", action="store_true", help="Copy instead of move")
+    p.add_argument("--dry-run", action="store_true", help="Show plan, do not move")
+    args = p.parse_args()
+
+    sections = parse_sections(args.sections_file.read_text())
+    if not sections:
+        print(f"  No sections parsed from {args.sections_file}")
+        sys.exit(1)
+    print(f"  {len(sections)} sections defined")
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    moved_per_section = {s[2]: 0 for s in sections}
+    unmatched = []
+    skipped = 0
+
+    for src in sorted(args.source_dir.iterdir()):
+        if not src.is_file():
+            continue
+        if args.prefix_filter and not src.name.startswith(args.prefix_filter):
+            continue
+        secs = file_seconds(src.name)
+        if secs is None:
+            unmatched.append(src.name)
+            continue
+
+        # Find first matching section (sections in chronological order)
+        matched = None
+        for i, (start, end, slug) in enumerate(sections):
+            if start <= secs < end:
+                matched = (i, slug)
+                break
+        if not matched:
+            unmatched.append(src.name)
+            continue
+
+        idx, slug = matched
+        section_dir = args.output_dir / f"{idx + 1:02d}-{slug}"
+        section_dir.mkdir(parents=True, exist_ok=True)
+        dest = section_dir / src.name
+
+        if dest.exists():
+            skipped += 1
+            continue
+
+        if args.dry_run:
+            print(f"  [dry-run] {src.name}  →  {section_dir.name}/")
+        elif args.copy:
+            shutil.copy2(src, dest)
+        else:
+            shutil.move(str(src), str(dest))
+
+        moved_per_section[slug] = moved_per_section.get(slug, 0) + 1
+
+    print()
+    print("Per-section counts:")
+    for i, (start, end, slug) in enumerate(sections):
+        n = moved_per_section.get(slug, 0)
+        print(f"  {i + 1:02d}-{slug}: {n}")
+    if unmatched:
+        print(f"\nUnmatched ({len(unmatched)}):")
+        for n in unmatched[:10]:
+            print(f"  {n}")
+        if len(unmatched) > 10:
+            print(f"  ... and {len(unmatched) - 10} more")
+    print(f"\nSkipped (already at destination): {skipped}")
+
+
+if __name__ == "__main__":
+    main()

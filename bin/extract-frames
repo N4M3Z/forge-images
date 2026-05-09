@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Extract picked frames from a source video at native resolution.
+
+Reads a tab-separated picks file (output of `pick-frames` HTML page export)
+and emits one JPEG per pick at the source video's native resolution. Output
+filenames use timestamp slugs so names sort chronologically and stay stable.
+
+Picks file format (tab-separated, header row optional):
+
+    frame  timestamp  pts_seconds
+    0001   00:00:03   3.00
+"""
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+
+def parse_picks(text):
+    picks = []
+    for line in text.strip().splitlines():
+        parts = line.split()
+        if len(parts) < 3 or parts[0] == "frame":
+            continue
+        try:
+            picks.append((parts[0], parts[1], float(parts[2])))
+        except (ValueError, IndexError):
+            pass
+    return picks
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("video", type=Path)
+    p.add_argument("picks_file", type=Path)
+    p.add_argument("--prefix", required=True, help="Slug prefix for output filenames")
+    p.add_argument("--output-dir", type=Path, required=True)
+    p.add_argument("--quality", type=int, default=2, help="JPEG quality (1=highest, 31=lowest)")
+    args = p.parse_args()
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    picks = parse_picks(args.picks_file.read_text())
+    print(f"Parsed {len(picks)} picks")
+
+    succeeded = 0
+    skipped = 0
+    failed = 0
+
+    for i, (frame_num, ts, pts) in enumerate(picks, 1):
+        h, m, s = ts.split(":")
+        slug = f"{h}h{m}m{s}s"
+        out_file = args.output_dir / f"{args.prefix}-{slug}.jpg"
+
+        if out_file.exists():
+            skipped += 1
+            continue
+
+        cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-ss", str(pts),
+            "-i", str(args.video),
+            "-frames:v", "1",
+            "-q:v", str(args.quality),
+            str(out_file),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0 and out_file.exists():
+            succeeded += 1
+            if i % 20 == 0:
+                print(f"  {i}/{len(picks)} done...")
+        else:
+            failed += 1
+            print(f"  ✗ {ts} failed: {result.stderr[:120]}")
+
+    print(f"\n✓ Succeeded: {succeeded}, skipped: {skipped}, failed: {failed}")
+    print(f"  Output: {args.output_dir}")
+
+
+if __name__ == "__main__":
+    main()

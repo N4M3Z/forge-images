@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Cut scene-aware MP4 clips from a video using a picks file.
+
+For each pick, the surrounding shot is identified by ffmpeg scene-change
+detection — the clip runs from the previous scene boundary to the next.
+This respects the editor's actual cuts, producing self-contained shots
+without manual scrubbing for in/out points.
+
+Picks file format matches `extract-frames`:
+
+    frame  timestamp  pts_seconds
+    0001   00:00:03   3.00
+
+Output: one MP4 per pick with the same timestamp slug as the still
+extraction (`<prefix>-00h25m13s.mp4`), so clips and stills share names.
+"""
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+def detect_scene_boundaries(video, threshold=0.4):
+    """Return sorted list of pts_times (seconds) for all scene-change boundaries."""
+    cmd = [
+        "ffmpeg", "-loglevel", "info",
+        "-i", str(video),
+        "-vf", f"select=gt(scene\\,{threshold}),showinfo",
+        "-f", "null", "-",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    boundaries = []
+    pts_re = re.compile(r"pts_time:(\d+\.?\d*)")
+    for line in result.stderr.splitlines():
+        if "Parsed_showinfo" in line:
+            m = pts_re.search(line)
+            if m:
+                boundaries.append(float(m.group(1)))
+    return sorted(boundaries)
+
+
+def parse_picks(text):
+    picks = []
+    for line in text.strip().splitlines():
+        parts = line.split()
+        if len(parts) < 3 or parts[0] == "frame":
+            continue
+        try:
+            picks.append((parts[0], parts[1], float(parts[2])))
+        except (ValueError, IndexError):
+            pass
+    return picks
+
+
+def get_video_duration(video):
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "csv=p=0",
+        str(video),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return float(result.stdout.strip())
+
+
+def find_clip_window(pts, boundaries, duration, min_duration, max_duration):
+    """For pick at pts, find clip in/out points using scene boundaries."""
+    prev = 0.0
+    for b in boundaries:
+        if b <= pts:
+            prev = b
+        else:
+            break
+
+    nxt = duration
+    for b in boundaries:
+        if b > pts:
+            nxt = b
+            break
+
+    span = nxt - prev
+    if span < min_duration:
+        pad = (min_duration - span) / 2
+        prev = max(0.0, prev - pad)
+        nxt = min(duration, nxt + pad)
+    elif span > max_duration:
+        half = max_duration / 2
+        prev = max(0.0, pts - half)
+        nxt = min(duration, pts + half)
+
+    return prev, nxt
+
+
+def cut_clip(video, start, end, output, crf=23):
+    duration = end - start
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-ss", str(start),
+        "-i", str(video),
+        "-t", str(duration),
+        "-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        str(output),
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("video", type=Path)
+    p.add_argument("picks_file", type=Path)
+    p.add_argument("--prefix", required=True, help="Slug prefix for output filenames")
+    p.add_argument("--output-dir", type=Path, required=True)
+    p.add_argument("--threshold", type=float, default=0.4, help="Scene detection threshold (0.0-1.0)")
+    p.add_argument("--min-duration", type=float, default=3.0, help="Minimum clip length (seconds)")
+    p.add_argument("--max-duration", type=float, default=20.0, help="Maximum clip length (seconds)")
+    p.add_argument("--crf", type=int, default=23, help="x264 CRF (lower=better, larger files)")
+    args = p.parse_args()
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Detecting scene boundaries in {args.video.name} (threshold={args.threshold})...")
+    boundaries = detect_scene_boundaries(args.video, args.threshold)
+    print(f"  Found {len(boundaries)} scene-change boundaries")
+
+    duration = get_video_duration(args.video)
+    print(f"  Video duration: {duration:.1f}s ({int(duration//60)}m{int(duration%60)}s)")
+
+    picks = parse_picks(args.picks_file.read_text())
+    print(f"Parsed {len(picks)} picks")
+
+    succeeded = 0
+    skipped = 0
+    failed = 0
+    total_seconds = 0.0
+
+    for i, (frame_num, ts, pts) in enumerate(picks, 1):
+        h, m, s = ts.split(":")
+        slug = f"{h}h{m}m{s}s"
+        out_file = args.output_dir / f"{args.prefix}-{slug}.mp4"
+
+        if out_file.exists():
+            skipped += 1
+            continue
+
+        start, end = find_clip_window(pts, boundaries, duration, args.min_duration, args.max_duration)
+        try:
+            cut_clip(args.video, start, end, out_file, args.crf)
+            succeeded += 1
+            total_seconds += end - start
+            if i % 25 == 0:
+                print(f"  {i}/{len(picks)} done...")
+        except subprocess.CalledProcessError as e:
+            failed += 1
+            print(f"  ✗ {ts}: ffmpeg failed (exit {e.returncode})")
+
+    avg_dur = total_seconds / succeeded if succeeded else 0
+    print(f"\n✓ Cut: {succeeded}, skipped: {skipped}, failed: {failed}")
+    print(f"  Average clip duration: {avg_dur:.1f}s")
+    print(f"  Output: {args.output_dir}")
+
+
+if __name__ == "__main__":
+    main()

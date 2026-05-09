@@ -8,17 +8,25 @@ Image processing utilities for the Forge framework.
 
 | Skill | Purpose |
 |-------|---------|
-| RasterToVector | Multi-color bitmap-to-SVG conversion via ImageMagick + potrace |
+| RasterToVector    | Multi-color bitmap-to-SVG conversion via ImageMagick + potrace |
+| FramePicker       | Interactive HTML frame picker for video frames + native-resolution still extraction |
+| ClipCutter        | Scene-aware MP4 clip cutting from a picks file (audio included, editor's-cut respected) |
+| CaptureOrganizer  | Auto-label picks from SRT context + organise stills/clips into per-chapter folders |
+| ImageMatcher      | Reverse image lookup vs Wikimedia Commons via perceptual hash + Hamming distance |
+| CatalogEmbeds     | Insert inline `![[file\|600]]` previews into Markdown asset catalogs |
 
 ## Dependencies
 
-- [ImageMagick](https://imagemagick.org/) (`magick` CLI)
-- [potrace](https://potrace.sourceforge.net/) (bitmap tracer)
+- [ImageMagick](https://imagemagick.org/) (`magick` CLI) — for RasterToVector
+- [potrace](https://potrace.sourceforge.net/) (bitmap tracer) — for RasterToVector
+- [ffmpeg](https://ffmpeg.org/) (with libx264) — for FramePicker / ClipCutter
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — optional, for pulling YouTube source videos
+- Python 3.9+ with `imagehash`, `Pillow`, `requests` — for ImageMatcher (use a venv: `uv venv .venv && uv pip install --python .venv/bin/python imagehash Pillow requests`)
 
 Install via Homebrew:
 
 ```bash
-brew install imagemagick potrace
+brew install imagemagick potrace ffmpeg yt-dlp
 ```
 
 ## Usage
