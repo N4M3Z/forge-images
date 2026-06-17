@@ -1,6 +1,6 @@
-# forge-images
+# forge-media
 
-Image processing — multi-color raster-to-vector conversion via ImageMagick + potrace, with optional AI upscaling. Shell module, no Rust.
+Media processing and acquisition: image format conversion and raster-to-vector tracing (ImageMagick + potrace), video-to-GIF and A/V transcoding (ffmpeg), and media download (yt-dlp), with optional AI upscaling. Shell module, no Rust.
 
 ## Scripts
 
@@ -8,9 +8,10 @@ Image processing — multi-color raster-to-vector conversion via ImageMagick + p
 |--------|---------|
 | `bin/raster-to-svg.sh` | Convert GIF/PNG/JPEG to scalable SVG |
 
-## Skills (1)
+## Skills
 
-RasterToVector — guided bitmap-to-SVG conversion
+MediaCapture: download video/audio/subtitles via yt-dlp
+RasterToVector: guided bitmap-to-SVG conversion
 
 ## Dependencies
 

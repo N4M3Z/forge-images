@@ -1,0 +1,22 @@
+provenance:
+  _type: https://in-toto.io/Statement/v1
+  subject:
+  - name: docs/decisions/.mdschema
+    digest:
+      sha256: 4b10d5655ea6f335764742173423d38a400be5b20ea96b0c620f02bef0df846c
+  predicate:
+    buildDefinition:
+      buildType: https://github.com/N4M3Z/forge-cli/init/v1
+      externalParameters:
+        source: https://github.com/N4M3Z/forge-cli
+      resolvedDependencies:
+      - uri: templates/init/docs/decisions/.mdschema
+        digest:
+          sha256: 4b10d5655ea6f335764742173423d38a400be5b20ea96b0c620f02bef0df846c
+    runDetails:
+      builder:
+        id: forge-cli
+        version:
+          forge: 0.3.2
+      metadata:
+        startedOn: 2026-06-17T01:16:51.948876+00:00

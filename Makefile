@@ -1,21 +1,31 @@
-# forge-images — test and lint
+FORGE ?= forge
 
-LIB_DIR = $(or $(FORGE_LIB),lib)
-
-.PHONY: help test lint check init
+.PHONY: help install validate validate-push clean
 
 help:
-	@echo "forge-images targets:"
-	@echo "  make test    Run shell tests"
-	@echo "  make lint    Shellcheck all scripts"
-	@echo "  make check   Verify module structure"
+	@echo "  make install        deploy and activate hooks (git + jj)"
+	@echo "  make validate       run commit-stage checks"
+	@echo "  make validate-push  run pre-push checks (gitleaks, semgrep)"
+	@echo "  make clean          remove build artifacts"
 
-init:
-	@if [ ! -d $(LIB_DIR)/mk ]; then \
-	  echo "Initializing forge-lib submodule..."; \
-	  git submodule update --init $(LIB_DIR); \
+install:
+	@command -v $(FORGE) >/dev/null 2>&1 \
+	    || { echo "forge not found — ask an AI assistant to execute INSTALL.md"; exit 1; }
+	git config core.hooksPath .githooks
+	chmod +x .githooks/* 2>/dev/null || true
+	$(FORGE) install
+	@if [ -d .jj ] && command -v jj >/dev/null 2>&1; then \
+	    jj config set --repo aliases.push "[\"util\",\"exec\",\"--\",\"bash\",\"$$PWD/.githooks/jj-push\"]"; \
+	    echo "jj detected: 'jj push' runs the pre-push gate, then 'jj git push'"; \
+	elif [ -d .jj ]; then \
+	    echo "warn: .jj/ present but jj not on PATH — 'jj push' gate NOT wired"; \
 	fi
 
-ifneq ($(wildcard $(LIB_DIR)/mk/shell.mk),)
-  include $(LIB_DIR)/mk/shell.mk
-endif
+validate:
+	@bash .githooks/pre-commit
+
+validate-push:
+	@bash .githooks/pre-push
+
+clean:
+	rm -rf build/

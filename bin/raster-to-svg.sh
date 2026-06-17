@@ -219,8 +219,9 @@ main() {
   local -a LAYER_ARGS=()
   local i=0
   for rgb in "${COLORS[@]}"; do
-    local hex
-    hex=$(printf '#%02X%02X%02X' $(echo "$rgb" | tr ',' ' '))
+    local hex red green blue
+    IFS=',' read -r red green blue <<< "$rgb"
+    hex=$(printf '#%02X%02X%02X' "$red" "$green" "$blue")
     echo "  Layer $i: $hex ($rgb)" >&2
 
     # Create binary mask for this color
