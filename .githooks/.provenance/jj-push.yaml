@@ -1,0 +1,22 @@
+provenance:
+  _type: https://in-toto.io/Statement/v1
+  subject:
+  - name: .githooks/jj-push
+    digest:
+      sha256: 38d77528b2961572b678a77400ea1f7658e24859473ad061de44283f8fc3df19
+  predicate:
+    buildDefinition:
+      buildType: https://github.com/N4M3Z/forge-cli/init/v1
+      externalParameters:
+        source: https://github.com/N4M3Z/forge-cli
+      resolvedDependencies:
+      - uri: templates/init/.githooks/jj-push
+        digest:
+          sha256: 38d77528b2961572b678a77400ea1f7658e24859473ad061de44283f8fc3df19
+    runDetails:
+      builder:
+        id: forge-cli
+        version:
+          forge: 0.3.2
+      metadata:
+        startedOn: 2026-06-17T01:16:51.946666+00:00

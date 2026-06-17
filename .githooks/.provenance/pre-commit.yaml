@@ -1,0 +1,22 @@
+provenance:
+  _type: https://in-toto.io/Statement/v1
+  subject:
+  - name: .githooks/pre-commit
+    digest:
+      sha256: 66488c8d6eb5b38e5cbdbf1415de78513ceeb5db8142f4000fd04017fb19d921
+  predicate:
+    buildDefinition:
+      buildType: https://github.com/N4M3Z/forge-cli/init/v1
+      externalParameters:
+        source: https://github.com/N4M3Z/forge-cli
+      resolvedDependencies:
+      - uri: templates/init/.githooks/pre-commit
+        digest:
+          sha256: 9a2c4e5a90b10b8e80d8ab23a365ef31f2f4e0bfcfef51dbf52f317690c769c0
+    runDetails:
+      builder:
+        id: forge-cli
+        version:
+          forge: 0.3.2
+      metadata:
+        startedOn: 2026-06-17T01:16:51.946834+00:00

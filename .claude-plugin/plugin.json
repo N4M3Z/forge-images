@@ -1,7 +1,7 @@
 {
-  "name": "forge-images",
+  "name": "forge-media",
   "version": "0.1.0",
-  "description": "Image processing utilities — raster-to-vector conversion, format transforms. USE WHEN converting images between formats, tracing bitmaps to SVG, or processing image assets.",
+  "description": "Media processing and acquisition for the forge ecosystem, spanning image format conversion, raster-to-vector tracing, video-to-GIF, transcoding, and media download. USE WHEN converting images or video between formats, tracing bitmaps to SVG, making a GIF from a video, transcoding audio or video, or downloading media with yt-dlp.",
   "author": { "name": "N4M3Z" },
   "hooks": "./hooks/hooks.json",
   "skills": ["./skills"]

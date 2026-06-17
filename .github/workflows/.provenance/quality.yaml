@@ -1,0 +1,22 @@
+provenance:
+  _type: https://in-toto.io/Statement/v1
+  subject:
+  - name: .github/workflows/quality.yaml
+    digest:
+      sha256: 233ab706805d30d1c6107ea72f6466eebb5df627f12dc6b68a58faa622476baf
+  predicate:
+    buildDefinition:
+      buildType: https://github.com/N4M3Z/forge-cli/init/v1
+      externalParameters:
+        source: https://github.com/N4M3Z/forge-cli
+      resolvedDependencies:
+      - uri: templates/init/.github/workflows/quality.yaml
+        digest:
+          sha256: 233ab706805d30d1c6107ea72f6466eebb5df627f12dc6b68a58faa622476baf
+    runDetails:
+      builder:
+        id: forge-cli
+        version:
+          forge: 0.3.2
+      metadata:
+        startedOn: 2026-06-17T01:16:51.947134+00:00

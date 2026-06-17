@@ -1,0 +1,65 @@
+.gitattributes:
+  fingerprint: d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c
+  provenance: .provenance/.gitattributes.yaml
+.githooks:
+  jj-push:
+    fingerprint: 38d77528b2961572b678a77400ea1f7658e24859473ad061de44283f8fc3df19
+    provenance: .githooks/.provenance/jj-push.yaml
+  pre-commit:
+    fingerprint: 66488c8d6eb5b38e5cbdbf1415de78513ceeb5db8142f4000fd04017fb19d921
+    provenance: .githooks/.provenance/pre-commit.yaml
+  pre-push:
+    fingerprint: 95268a17f36d1eb87cea1dc174763753974ebc54b1e65e2f06c2138778cd2a51
+    provenance: .githooks/.provenance/pre-push.yaml
+.github:
+  workflows:
+    quality.yaml:
+      fingerprint: 233ab706805d30d1c6107ea72f6466eebb5df627f12dc6b68a58faa622476baf
+      provenance: .github/workflows/.provenance/quality.yaml
+    release.yaml:
+      fingerprint: 5983bb680dcbdd12dfcab4f499d7c2f51354b6b8404af64e5a3c3d2ae423c4b1
+      provenance: .github/workflows/.provenance/release.yaml
+.gitlab-ci.yml:
+  fingerprint: 6d6e7f590b272a4c636d69e8a939717c6bb2a189fe4f439ba64aed8150fe4a6f
+  provenance: .provenance/.gitlab-ci.yaml
+.gitleaks.toml:
+  fingerprint: d812280ad61dd0ff20d66c897fe571a4a085c07791c951bd138dbd6d967dd5bf
+  provenance: .provenance/.gitleaks.yaml
+.pre-commit-config.yaml:
+  fingerprint: 5fd423db729e30a0e7339cd8660569750f33d819bc8f2971b86504810bd9bf87
+  provenance: .provenance/.pre-commit-config.yaml
+CHANGELOG.md:
+  fingerprint: 84c6eba5d0425ffa4110e1adff84d9f468387713e8981f2a0bd06ee4db505bc8
+  provenance: .provenance/CHANGELOG.yaml
+CODEOWNERS:
+  fingerprint: 46f5aa16e9527c5f899466c4bde308c0d03f57d3a5df4177d1477bbdcd512951
+  provenance: .provenance/CODEOWNERS.yaml
+CONTRIBUTING.md:
+  fingerprint: 4c1346df1b5d1a99ac7358c88217e4f476ca14603391f5a09d4512f1f164ec86
+  provenance: .provenance/CONTRIBUTING.yaml
+LICENSE:
+  fingerprint: 57fb42fbcd0b037ce528ed8f72f1ec095d67bc6825ecf1448ff39be1fe68a4b4
+  provenance: .provenance/LICENSE.yaml
+Makefile:
+  fingerprint: beae6900e7ef3d9fea74d51e9d3f314c5d930c5a5c68f3c2791ae2fd43289ad4
+  provenance: .provenance/Makefile.yaml
+agents:
+  .mdschema:
+    fingerprint: ae52030ed8dd0761400444b8f5f7b9de8af4677d9c84729dbdeb98719234457f
+    provenance: agents/.provenance/.mdschema.yaml
+defaults.yaml:
+  fingerprint: cadb94123cacfb028ad0cb46fba471354350d06f71a91bbeb9b849c74f898551
+  provenance: .provenance/defaults.yaml
+docs:
+  decisions:
+    .mdschema:
+      fingerprint: 4b10d5655ea6f335764742173423d38a400be5b20ea96b0c620f02bef0df846c
+      provenance: docs/decisions/.provenance/.mdschema.yaml
+rules:
+  .mdschema:
+    fingerprint: 4e6c78b7d14eeef521baf44acd73a6201e76174002bff5f83c2f699f0a2e6ed8
+    provenance: rules/.provenance/.mdschema.yaml
+skills:
+  .mdschema:
+    fingerprint: 4646e04b3b7fc04f201c88af0a9272c08f7d0a5c02d157dea8ac098f72b45aaa
+    provenance: skills/.provenance/.mdschema.yaml
