@@ -1,4 +1,4 @@
-# forge-images
+# forge-media
 
 Image processing — multi-color raster-to-vector conversion via ImageMagick + potrace, with optional AI upscaling. Shell module, no Rust.
 

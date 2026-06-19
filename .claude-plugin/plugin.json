@@ -1,5 +1,5 @@
 {
-  "name": "forge-images",
+  "name": "forge-media",
   "version": "0.1.0",
   "description": "Image processing utilities — raster-to-vector conversion, format transforms. USE WHEN converting images between formats, tracing bitmaps to SVG, or processing image assets.",
   "author": { "name": "N4M3Z" },

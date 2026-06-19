@@ -1,4 +1,4 @@
-name: forge-images
+name: forge-media
 version: 0.1.0
 description: Image utilities — raster-to-vector conversion, format transforms, and headless web-page screenshot capture. USE WHEN converting images between formats, tracing bitmaps to SVG, capturing a web page or dashboard to a PNG, or processing image assets.
 events: []
