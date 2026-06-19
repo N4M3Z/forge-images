@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Render a web page to a PNG via headless Chrome + the DevTools protocol. Handles auth, interactive
+# states (a JS click/reveal before the shot), virtualized content, and region clipping — no browser
+# extension, screen-recording permission, or window focus required.
+#
+#   web-capture <url> <out.png> [options]
+#     --eval JS|@file   run JS before the shot (e.g. open a modal, expand a row); @file reads a file
+#     --wait MS         ms to wait after load before the shot / eval (default 6500; raise for SPAs)
+#     --auth HEADER     value for the Authorization header, e.g. "Basic $(printf admin:admin | base64)"
+#     --clip x,y,w,h    capture only this region (full-page coords; pairs well with a tall --size)
+#     --size WxH        viewport, e.g. 1500,2600 to fit a long page without scrolling (default 1500,1000)
+#
+# Env: CHROME_BIN overrides the Chrome path.
+set -euo pipefail
+
+[ $# -ge 2 ] || { sed -n '2,17p' "$0"; exit 2; }
+url="$1"; out="$2"; shift 2
+eval_js="-"; wait_ms="6500"; auth="-"; clip="-"; size="1500,1000"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --eval) eval_js="$2"; shift 2 ;;
+        --wait) wait_ms="$2"; shift 2 ;;
+        --auth) auth="$2"; shift 2 ;;
+        --clip) clip="$2"; shift 2 ;;
+        --size) size="$2"; shift 2 ;;
+        *) echo "web-capture: unknown option: $1" >&2; exit 2 ;;
+    esac
+done
+
+chrome="${CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
+[ -x "$chrome" ] || { echo "web-capture: Chrome not found (set CHROME_BIN)" >&2; exit 2; }
+
+here="$(cd "$(dirname "$0")" && pwd)"
+port=$(( 9200 + RANDOM % 600 ))
+profile="$(mktemp -d)"
+"$chrome" --headless=new --disable-gpu --hide-scrollbars --window-size="$size" \
+    --remote-debugging-port="$port" --user-data-dir="$profile" about:blank >/dev/null 2>&1 &
+chrome_pid=$!
+trap 'kill "$chrome_pid" 2>/dev/null; wait "$chrome_pid" 2>/dev/null; rm -rf "$profile" 2>/dev/null' EXIT
+
+curl -sf --retry-connrefused --retry 25 --retry-delay 1 "http://localhost:$port/json/version" >/dev/null \
+    || { echo "web-capture: headless Chrome did not come up on $port" >&2; exit 1; }
+
+node "$here/web-capture.mjs" "$port" "$url" "$out" "$eval_js" "$wait_ms" "$auth" "$clip"

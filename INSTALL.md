@@ -13,7 +13,7 @@ The `--ai-upscale` flag requires Real-ESRGAN ncnn Vulkan, a GPU-accelerated imag
 ### Automated setup
 
 ```bash
-cd Modules/forge-images
+cd Modules/forge-media
 
 # Download macOS binary + models from Real-ESRGAN v0.2.5.0
 mkdir -p vendor

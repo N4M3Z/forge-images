@@ -1,4 +1,4 @@
-# forge-images
+# forge-media
 
 Image processing utilities for the Forge framework.
 

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Capture a web-UI animation to a GIF (or MP4) via headless Chrome + the DevTools protocol. Steps
+# through a frames script (states reached by JS), then stitches the frames with ffmpeg.
+#
+#   web-gif <url> <out.gif|out.mp4> --frames frames.mjs [options]
+#     --frames FILE   JS module default-exporting [{ eval?, wait?, hold? }, ...] (required)
+#     --fps N         frames per second (default 10; `hold` in a step pauses on that state)
+#     --auth HEADER   Authorization header value (basic auth for Grafana, internal tools)
+#     --size WxH      viewport (default 1500,1000); use a tall height for long pages
+#     --wait MS       ms after initial load before the first frame (default 6500)
+#
+# Env: CHROME_BIN overrides the Chrome path. Requires ffmpeg.
+set -euo pipefail
+
+[ $# -ge 2 ] || { sed -n '2,15p' "$0"; exit 2; }
+url="$1"; out="$2"; shift 2
+frames=""; fps="10"; auth="-"; size="1500,1000"; wait_ms="6500"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --frames) frames="$2"; shift 2 ;;
+        --fps) fps="$2"; shift 2 ;;
+        --auth) auth="$2"; shift 2 ;;
+        --size) size="$2"; shift 2 ;;
+        --wait) wait_ms="$2"; shift 2 ;;
+        *) echo "web-gif: unknown option: $1" >&2; exit 2 ;;
+    esac
+done
+[ -n "$frames" ] || { echo "web-gif: --frames is required" >&2; exit 2; }
+command -v ffmpeg >/dev/null || { echo "web-gif: ffmpeg required (brew install ffmpeg)" >&2; exit 2; }
+
+chrome="${CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
+[ -x "$chrome" ] || { echo "web-gif: Chrome not found (set CHROME_BIN)" >&2; exit 2; }
+
+here="$(cd "$(dirname "$0")" && pwd)"
+port=$(( 9200 + RANDOM % 600 ))
+profile="$(mktemp -d)"; framedir="$(mktemp -d)"
+"$chrome" --headless=new --disable-gpu --hide-scrollbars --window-size="$size" \
+    --remote-debugging-port="$port" --user-data-dir="$profile" about:blank >/dev/null 2>&1 &
+chrome_pid=$!
+trap 'kill "$chrome_pid" 2>/dev/null; wait "$chrome_pid" 2>/dev/null; rm -rf "$profile" "$framedir" 2>/dev/null' EXIT
+
+curl -sf --retry-connrefused --retry 25 --retry-delay 1 "http://localhost:$port/json/version" >/dev/null \
+    || { echo "web-gif: headless Chrome did not come up on $port" >&2; exit 1; }
+
+node "$here/web-capture-frames.mjs" "$port" "$url" "$framedir" "$frames" "$wait_ms" "$auth"
+
+case "$out" in
+    *.mp4)
+        ffmpeg -y -framerate "$fps" -i "$framedir/%04d.png" -c:v libx264 -pix_fmt yuv420p \
+            -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" "$out" >/dev/null 2>&1 ;;
+    *)
+        ffmpeg -y -framerate "$fps" -i "$framedir/%04d.png" \
+            -vf "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" "$out" >/dev/null 2>&1 ;;
+esac
+echo "wrote $out"

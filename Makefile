@@ -1,11 +1,11 @@
-# forge-images — test and lint
+# forge-media — test and lint
 
 LIB_DIR = $(or $(FORGE_LIB),lib)
 
 .PHONY: help test lint check init
 
 help:
-	@echo "forge-images targets:"
+	@echo "forge-media targets:"
 	@echo "  make test    Run shell tests"
 	@echo "  make lint    Shellcheck all scripts"
 	@echo "  make check   Verify module structure"
